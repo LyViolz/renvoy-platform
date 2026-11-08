@@ -1,0 +1,15 @@
+# Local k3d cluster and the ephemeral CI cluster use this overlay.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: renvoy-status
+resources:
+  - ../../base
+  - ingress.yaml
+images:
+  - name: renvoy-status
+    newTag: dev
+secretGenerator:
+  # Throwaway credential for disposable local/CI clusters only.
+  - name: postgres
+    literals:
+      - password=local-only-not-a-secret

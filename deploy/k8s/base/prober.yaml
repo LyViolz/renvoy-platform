@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: prober
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: prober
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: prober
+              image: renvoy-status
+              command: ["python", "-m", "renvoy_status.prober"]
+              env:
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres
+                      key: password
+                - name: DATABASE_URL
+                  value: postgresql+psycopg://status:$(POSTGRES_PASSWORD)@postgres:5432/status
+                - name: TARGETS_FILE
+                  value: /config/targets.yaml
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 64Mi
+                limits:
+                  memory: 192Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: targets
+                  mountPath: /config
+                  readOnly: true
+          volumes:
+            - name: targets
+              configMap:
+                name: targets

@@ -1,0 +1,28 @@
+# Public Renvoy endpoints probed every 5 minutes.
+# App Store and Google Play reject builds whose privacy/support URLs are unreachable,
+# so those pages are monitored next to the product surfaces.
+targets:
+  - name: renvoyapps.com
+    url: https://renvoyapps.com
+    group: Websites
+  - name: renscore.com
+    url: https://renscore.com
+    group: Renscore
+  - name: renscore-auth-api
+    url: https://renscore.com/api/auth/get-session
+    group: Renscore
+  - name: vixy-privacy
+    url: https://renvoyapps.com/apps/vixy/privacy
+    group: Store compliance pages
+  - name: vixy-support
+    url: https://renvoyapps.com/apps/vixy/support
+    group: Store compliance pages
+  - name: taskcue-privacy
+    url: https://renvoyapps.com/apps/taskcue/privacy
+    group: Store compliance pages
+  - name: cinecatch-page
+    url: https://renvoyapps.com/apps/cinecatch
+    group: Store compliance pages
+  - name: cashscore-page
+    url: https://renvoyapps.com/apps/cashscore-predict-win
+    group: Store compliance pages

@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  K3D_VERSION: v5.8.3
+  IMAGE: ghcr.io/lyviolz/renvoy-platform/status
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: status
+          POSTGRES_PASSWORD: status
+          POSTGRES_DB: status
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U status"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Tests (SQLite)
+        run: uv run pytest -q
+      - name: Tests (Postgres)
+        run: uv run pytest -q
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://status:status@localhost:5432/status
+
+  e2e:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install k3d
+        run: curl -fsSL "https://raw.githubusercontent.com/k3d-io/k3d/${K3D_VERSION}/install.sh" | TAG="${K3D_VERSION}" bash
+      - name: Create ephemeral cluster
+        run: k3d cluster create ci --wait --timeout 180s
+      - name: Build image and load it into the cluster
+        run: |
+          docker build -t renvoy-status:dev app
+          k3d image import renvoy-status:dev -c ci
+      - name: Deploy
+        run: kubectl apply -k deploy/k8s/overlays/local
+      - name: Smoke test
+        run: bash scripts/smoke.sh
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n renvoy-status get all,pvc,ingress
+          kubectl -n renvoy-status get events --sort-by=.lastTimestamp | tail -n 40
+          kubectl -n renvoy-status describe pods | tail -n 120
+          kubectl -n renvoy-status logs -l app=web --tail=100 || true
+          kubectl -n renvoy-status logs -l app=prober --tail=100 || true
+      - name: Delete cluster
+        if: always()
+        run: k3d cluster delete ci
+
+  publish:
+    needs: e2e
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: app
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest

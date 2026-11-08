@@ -1,0 +1,18 @@
+# k3d ships Traefik; with `-p 8080:80@loadbalancer` this serves http://status.localhost:8080
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: status.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http
