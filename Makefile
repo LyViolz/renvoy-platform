@@ -10,6 +10,11 @@ lint:
 
 cluster:
 	k3d cluster create $(CLUSTER) -p "8080:80@loadbalancer" --wait
+	@# Docker Desktop makes k3d write host.docker.internal as the API host, which WSL cannot
+	@# reach. The API port is published on localhost too, and the k3s certificate covers 127.0.0.1.
+	kubectl config set-cluster k3d-$(CLUSTER) --server="$$(kubectl config view \
+		-o jsonpath='{.clusters[?(@.name=="k3d-$(CLUSTER)")].cluster.server}' \
+		| sed -E 's#//[^:/]+:#//127.0.0.1:#')"
 
 image:
 	docker build -t renvoy-status:dev app
