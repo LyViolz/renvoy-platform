@@ -42,6 +42,9 @@ spec:
               path: /readyz
               port: http
             periodSeconds: 5
+            # Longer than the 3 s DB connect timeout plus DNS, so /readyz answers its own 503
+            # instead of the kubelet giving up after the 1 s default.
+            timeoutSeconds: 6
           livenessProbe:
             httpGet:
               path: /healthz

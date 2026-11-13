@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy import event
+
 from renvoy_status import store
 from renvoy_status.probe import CheckResult
 
@@ -58,3 +61,17 @@ def test_prune_deletes_only_old_rows(engine):
 def test_record_with_no_results_is_a_noop(engine):
     assert store.record(engine, []) == 0
     assert store.latest(engine) == []
+
+
+def test_postgres_engine_sets_a_connect_timeout():
+    engine = store.make_engine("postgresql+psycopg://u:p@db.invalid:5432/x")
+    seen = {}
+
+    @event.listens_for(engine, "do_connect")
+    def capture(dialect, conn_rec, cargs, cparams):
+        seen.update(cparams)
+        raise RuntimeError("stop before connecting")
+
+    with pytest.raises(RuntimeError, match="stop before connecting"):
+        engine.connect()
+    assert seen["connect_timeout"] == store.CONNECT_TIMEOUT_SECONDS

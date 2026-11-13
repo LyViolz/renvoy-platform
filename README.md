@@ -80,6 +80,10 @@ TARGETS_FILE=../deploy/k8s/base/targets.yaml uv run uvicorn renvoy_status.web:ap
   failed Job; the Job fails only when it cannot probe or write.
 - **Readiness checks the database, liveness does not.** A Postgres outage takes pods out of
   the Service instead of restart-looping them.
+- **Fail fast when the database is gone.** An outage drill (Postgres scaled to zero) showed
+  requests hanging for 39 s and then returning 500, because there was no connect timeout. Now
+  connections give up after 3 s, the page and API answer 503 with `Retry-After`, and
+  `/readyz` returns its own 503 within the probe timeout.
 - **Hardened pods.** Non-root UID, read-only root filesystem, all capabilities dropped,
   `RuntimeDefault` seccomp; the namespace enforces the `baseline` Pod Security Standard and
   warns on `restricted`.

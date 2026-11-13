@@ -21,6 +21,7 @@ from sqlalchemy import (
     select,
     text,
 )
+from sqlalchemy.engine import make_url
 
 from .probe import CheckResult
 
@@ -40,8 +41,16 @@ checks = Table(
 )
 
 
+# Without it, connecting to a Postgres pod that had just gone away hung for 39 to 71 s in an
+# outage drill on k3d (psycopg's own default is 130 s), and every request waiting on it hung too.
+CONNECT_TIMEOUT_SECONDS = 3
+
+
 def make_engine(url: str) -> Engine:
-    return create_engine(url, pool_pre_ping=True)
+    connect_args = {}
+    if make_url(url).get_backend_name() == "postgresql":
+        connect_args["connect_timeout"] = CONNECT_TIMEOUT_SECONDS
+    return create_engine(url, pool_pre_ping=True, connect_args=connect_args)
 
 
 def init_db(engine: Engine) -> None:

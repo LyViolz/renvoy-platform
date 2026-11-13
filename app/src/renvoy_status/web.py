@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Gauge, generate_latest
 from sqlalchemy import Engine
@@ -40,6 +40,18 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         engine.dispose()
 
     app = FastAPI(title="Renvoy Status", lifespan=lifespan)
+
+    @app.exception_handler(SQLAlchemyError)
+    async def database_unavailable(request: Request, exc: SQLAlchemyError) -> Response:
+        # The status history is unreachable, not the monitored targets: answer 503, not 500.
+        log.warning("database error on %s: %s", request.url.path, exc)
+        headers = {"Retry-After": "30"}
+        if request.url.path == "/":
+            page = render_page(
+                {"generated_at": datetime.now(UTC).isoformat(), "targets": [], "unavailable": True}
+            )
+            return HTMLResponse(page, status_code=503, headers=headers)
+        return JSONResponse({"status": "unavailable"}, status_code=503, headers=headers)
 
     def snapshot() -> dict:
         now = datetime.now(UTC)
@@ -121,7 +133,9 @@ def create_app(engine: Engine | None = None) -> FastAPI:
 
 def render_page(data: dict) -> str:
     targets = data["targets"]
-    if not targets:
+    if data.get("unavailable"):
+        banner, banner_class = "Status data is temporarily unavailable", "unknown"
+    elif not targets:
         banner, banner_class = "No checks recorded yet", "unknown"
     elif data["all_ok"]:
         banner, banner_class = "All systems operational", "up"

@@ -84,3 +84,18 @@ def test_metrics_exposes_per_target_gauges(client, engine):
     assert 'renvoy_target_up{target="b"} 0.0' in metrics
     assert 'renvoy_target_latency_ms{target="a"} 101.0' in metrics
     assert "renvoy_target_last_check_age_seconds" in metrics
+
+
+def test_database_outage_is_503_not_500(tmp_path):
+    # A SQLite file inside a missing directory cannot be opened: every query fails.
+    engine = store.make_engine(f"sqlite:///{tmp_path / 'missing' / 'status.db'}")
+    with TestClient(create_app(engine)) as client:
+        assert client.get("/readyz").status_code == 503
+        api = client.get("/api/status")
+        assert api.status_code == 503
+        assert api.json() == {"status": "unavailable"}
+        assert client.get("/metrics").status_code == 503
+        page = client.get("/")
+        assert page.status_code == 503
+        assert "Status data is temporarily unavailable" in page.text
+        assert page.headers["retry-after"] == "30"
