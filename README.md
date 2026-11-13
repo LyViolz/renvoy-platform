@@ -1,5 +1,7 @@
 # renvoy-platform
 
+[![ci](https://github.com/LyViolz/renvoy-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LyViolz/renvoy-platform/actions/workflows/ci.yml?query=branch%3Amain)
+
 Infrastructure for the **Renvoy status service**: a small Python service that probes the
 public endpoints of [Renvoy](https://renvoyapps.com) apps every five minutes, stores the
 history in Postgres and serves a status page, a JSON API and Prometheus metrics. It runs on
@@ -12,6 +14,11 @@ of an app is unreachable, so those pages are monitored next to the product surfa
 **Scope, stated honestly:** the platform runs on a local [k3d](https://k3d.io) cluster and in
 CI. There is no paid cloud deployment by design; every component is chosen so it could move
 to a managed cluster without changes to the app.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/status-page-dark.png">
+  <img alt="Renvoy Status page served from the local k3d cluster: all 8 checks passing with latency and 24h uptime" src="docs/status-page-light.png">
+</picture>
 
 ## Architecture
 
