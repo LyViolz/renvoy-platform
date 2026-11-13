@@ -47,18 +47,41 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql+psycopg://status:status@localhost:5432/status
 
-  e2e:
-    needs: test
+  # The image is built once here. e2e tests this exact image and publish pushes it,
+  # so what reaches the registry is byte for byte what passed the cluster test.
+  build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t renvoy-status:dev app
+      - name: Save image
+        run: |
+          docker image inspect --format 'image id {{.Id}}' renvoy-status:dev
+          docker save -o image.tar renvoy-status:dev
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image
+          path: image.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  e2e:
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: image
       - name: Install k3d
         run: curl -fsSL "https://raw.githubusercontent.com/k3d-io/k3d/${K3D_VERSION}/install.sh" | TAG="${K3D_VERSION}" bash
       - name: Create ephemeral cluster
         run: k3d cluster create ci --wait --timeout 180s
-      - name: Build image and load it into the cluster
+      - name: Load the built image into the cluster
         run: |
-          docker build -t renvoy-status:dev app
+          docker load -i image.tar
+          docker image inspect --format 'image id {{.Id}}' renvoy-status:dev
           k3d image import renvoy-status:dev -c ci
       - name: Deploy
         run: kubectl apply -k deploy/k8s/overlays/local
@@ -84,17 +107,19 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/download-artifact@v8
+        with:
+          name: image
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
-        with:
-          context: app
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:latest
+      - name: Push the image that passed e2e
+        run: |
+          docker load -i image.tar
+          docker image inspect --format 'image id {{.Id}}' renvoy-status:dev
+          for tag in "$GITHUB_SHA" latest; do
+            docker tag renvoy-status:dev "$IMAGE:$tag"
+            docker push "$IMAGE:$tag"
+          done

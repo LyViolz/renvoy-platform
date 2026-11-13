@@ -41,15 +41,18 @@ Endpoints: `/` status page, `/api/status` JSON, `/metrics` Prometheus, `/healthz
 
 ## CI/CD
 
-Every push and pull request runs three stages:
+Every push and pull request runs these stages:
 
 1. **test**: `ruff` lint and format check, then the test suite twice, against SQLite and
    against a real Postgres service container.
-2. **e2e**: creates a throwaway k3d cluster on the runner, builds the image, imports it,
+2. **build** (in parallel with test): builds the image once and stores it as a workflow
+   artifact. Later stages use this artifact and never rebuild it.
+3. **e2e**: creates a throwaway k3d cluster on the runner, imports the built image,
    applies the `local` overlay, triggers the prober CronJob as a one-off Job and runs
    `scripts/smoke.sh` (rollouts healthy, checks stored, API, metrics and page served).
    The cluster is deleted afterwards; on failure the job prints pods, events and logs.
-3. **publish** (main only): pushes the image to GHCR tagged with the commit SHA and `latest`.
+4. **publish** (main only): pushes the same image that passed e2e to GHCR, tagged with the
+   commit SHA and `latest`. Each stage logs the image ID, so the logs show it is one image.
 
 ## Run it locally
 
